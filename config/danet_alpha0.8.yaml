@@ -1,0 +1,39 @@
+describe: danet
+model_name: danet_alpha0.8
+path:
+  model_dir: ../../user_data/model_data
+  resume_path: ../../user_data/model_data/04052136danet_alpha0.8/model_0.pt
+  save_dir: ../../user_data/model_data/04052136danet_alpha0.8/
+  test_dir: /apsarapangu/disk2/fanghaipeng.fhp/dmt/ps_detection_divide
+test:
+  batchSize: 512
+  fp16: 1
+  imageSize: 320
+  resize: 512
+  stride: 4
+  zp: 0
+train:
+  aug: 0
+  balance: 1
+  batchSize: 16
+  fake_weight: 0.8
+  fp16: 1
+  hard_aug: 0
+  imageSize: 320
+  lr: 0.0001
+  n_input: 3
+  nclass: 2
+  niter: 100
+  outf: ../../user_data/model_data
+  real_cls: 1
+  remove: 1
+  resize: 512
+  resume: 0
+  save_step: 1
+  step_save: 1
+  stride: 4
+  th: 0.5
+  train_path: /apsarapangu/disk2/fanghaipeng.fhp/dmt/DANet_baseline/ps_detection_divide/psbattle_orisize_yty_train/annotations/psbattle_orisize_yty_train.txt
+  val_path: /apsarapangu/disk2/fanghaipeng.fhp/dmt/DANet_baseline/ps_detection_divide/psbattle_orisize_yty_val/annotations/psbattle_orisize_yty_val.txt
+  writer_root: ../../user_data/tensorlog
+  zp: 0

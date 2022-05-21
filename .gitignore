@@ -1,0 +1,7 @@
+apex.egg-info
+dist
+build
+docs/build
+*~
+ps_battles_orisize/*
+*.png
