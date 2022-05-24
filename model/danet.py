@@ -61,30 +61,6 @@ class Bottleneck(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, layers, num_classes=1000, n_input=3):
-        self.inplanes = 64
-        super(ResNet, self).__init__()
-        self.conv1 = nn.Conv2d(n_input, 64, kernel_size=7, stride=2, padding=3,
-                               bias=False)
-        self.bn1 = nn.BatchNorm2d(64)
-        self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
-
-        rates = [1, 2, 4]
-        self.layer4 = self._make_deeplabv3_layer(block, 512, layers[3], rates=rates, stride=1)  # stride 2 => stride 1
-        self.avgpool = nn.AvgPool2d(7, stride=1)
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
-
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
@@ -118,6 +94,31 @@ class ResNet(nn.Module):
             layers.append(block(self.inplanes, planes, rate=rates[i]))
 
         return nn.Sequential(*layers)
+    def __init__(self, block, layers, num_classes=1000, n_input=3):
+        self.inplanes = 64
+        super(ResNet, self).__init__()
+        self.conv1 = nn.Conv2d(n_input, 64, kernel_size=7, stride=2, padding=3,
+                               bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.layer1 = self._make_layer(block, 64, layers[0])
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
+
+        rates = [1, 2, 4]
+        self.layer4 = self._make_deeplabv3_layer(block, 512, layers[3], rates=rates, stride=1)  # stride 2 => stride 1
+        self.avgpool = nn.AvgPool2d(7, stride=1)
+        self.fc = nn.Linear(512 * block.expansion, num_classes)
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+
 
     def forward(self, x):
         x = self.conv1(x)
@@ -183,8 +184,24 @@ class ResNet50(nn.Module):
 
         return feature_map, out
 
-
 class Res18(nn.Module):
+    # def _make_deeplabv3_layer(self, block, planes, blocks, rates, stride=1):
+    #     downsample = None
+    #     block.expansion = 1
+    #     if stride != 1 or self.inplanes != planes * block.expansion:
+    #         downsample = nn.Sequential(
+    #             nn.Conv2d(self.inplanes, planes * block.expansion,
+    #                       kernel_size=1, stride=stride, bias=False),
+    #             nn.BatchNorm2d(planes * block.expansion),
+    #         )
+
+    #     layers = []
+    #     layers.append(block(self.inplanes, planes, stride, downsample))
+    #     self.inplanes = planes * block.expansion
+    #     for i in range(1, blocks):
+    #         layers.append(block(self.inplanes, planes, rate=rates[i]))
+
+    #     return nn.Sequential(*layers)
     def __init__(self, n_input):
         super(Res18, self).__init__()
         res = torchvision.models.resnet18(pretrained=True)
@@ -219,23 +236,6 @@ class Res18(nn.Module):
         x4 = self.layer4(x3)
         return [x1, x2, x3, x4], 0
 
-    def _make_deeplabv3_layer(self, block, planes, blocks, rates, stride=1):
-        downsample = None
-        block.expansion = 1
-        if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion,
-                          kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(planes * block.expansion),
-            )
-
-        layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample))
-        self.inplanes = planes * block.expansion
-        for i in range(1, blocks):
-            layers.append(block(self.inplanes, planes, rate=rates[i]))
-
-        return nn.Sequential(*layers)
 
 
 def rgb2gray(rgb):
@@ -280,59 +280,6 @@ class BayarConv2d(nn.Module):
         # print('x.shape', x.shape)
         x = F.conv2d(x, self.bayarConstraint(), stride=self.stride, padding=self.padding)
         return x
-
-
-class DANet(ResNet50):
-    def __init__(self, nclass, aux=False, n_input=3, constrain=False, **kwargs):
-        super(DANet, self).__init__(nclass, n_input=n_input)
-
-        print('-------use res50--------')
-        self.head = _DAHead(2048, nclass, aux, **kwargs)
-        self.extractor = self.base_forward
-
-        self.aux = aux
-        self.constrain = constrain
-        if self.constrain:
-            print("-------use constrain----")
-        self.n_input = n_input
-        self.__setattr__('exclusive', ['head'])
-        if self.constrain:
-            self.constrain_conv = BayarConv2d(1, 3, 5)
-
-        # self.out = nn.Sequential(
-        #     nn.Conv2d(2048, 2048//4, 3, padding=1, bias=False),
-        #     nn.BatchNorm2d(2048//4),
-        #     nn.ReLU(inplace=True),
-        #     nn.Dropout(0.1),
-        #     nn.Conv2d(2048//4, nclass, 1)
-        # )
-
-    def forward(self, x):
-        size = x.size()[2:]
-        # if self.constrain:
-        #     x = rgb2gray(x)
-        #     x = self.constrain_conv(x)
-        feature_map, _ = self.extractor(x)
-        c3, c4 = feature_map[2], feature_map[3]
-
-        outputs = []
-
-        # x0 = self.out(c4)
-        # x0 = F.interpolate(x0, size, mode='bilinear', align_corners=True)
-        # return x0
-
-        x = self.head(c4)
-        x0 = F.interpolate(x[0], size, mode='bilinear', align_corners=True)
-        outputs.append(x0)
-
-        if self.aux:
-            # print('x[1]:{}'.format(x[1].shape))
-            x1 = F.interpolate(x[1], size, mode='bilinear', align_corners=True)
-            x2 = F.interpolate(x[2], size, mode='bilinear', align_corners=True)
-            outputs.append(x1)
-            outputs.append(x2)
-
-        return x0
 
 
 class _PositionAttentionModule(nn.Module):
@@ -443,13 +390,210 @@ class _DAHead(nn.Module):
 
         return tuple(outputs)
 
+# --------------- SRM ---------------
+class SRMConv2D(nn.Module):
+    def __init__(self, stride=1, padding=2):
+        super(SRMConv2D, self).__init__()
+        self.stride = stride
+        self.padding = padding
 
+        def _get_srm_list():
+            # srm kernel 1
+            srm1 = [[0, 0, 0, 0, 0],
+                    [0, -1, 2, -1, 0],
+                    [0, 2, -4, 2, 0],
+                    [0, -1, 2, -1, 0],
+                    [0, 0, 0, 0, 0]]
+            srm1 = torch.tensor(srm1, dtype=torch.float32) / 4.
+
+            # srm kernel 2
+            srm2 = [[-1, 2, -2, 2, -1],
+                    [2, -6, 8, -6, 2],
+                    [-2, 8, -12, 8, -2],
+                    [2, -6, 8, -6, 2],
+                    [-1, 2, -2, 2, -1]]
+            srm2 = torch.tensor(srm2, dtype=torch.float32) / 12.
+
+            # srm kernel 3
+            srm3 = [[0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0],
+                    [0, 1, -2, 1, 0],
+                    [0, 0, 0, 0, 0],
+                    [0, 0, 0, 0, 0]]
+            srm3 = torch.tensor(srm3, dtype=torch.float32) / 2.
+
+            srm_list = torch.stack([torch.stack([srm1, srm1, srm1], dim=0), torch.stack([srm2, srm2, srm2], dim=0),
+                                torch.stack([srm3, srm3, srm3], dim=0)], dim=0)
+            half_srm = torch.tensor(srm_list, dtype=torch.float32)
+            return half_srm
+        self.SRMWeights = nn.Parameter(
+            _get_srm_list(), requires_grad=False)
+
+    def forward(self, x):
+        # print('x.shape', x.shape)
+        x = F.conv2d(x, self.SRMWeights, stride=self.stride, padding=self.padding)
+        return x
+
+
+class DANet(ResNet50):
+    def __init__(self, nclass, aux=False, n_input=3, constrain=False, **kwargs):
+        super(DANet, self).__init__(nclass, n_input=n_input)
+
+        print('-------use res50--------')
+        self.head = _DAHead(2048, nclass, aux, **kwargs)
+        self.extractor = self.base_forward
+
+        self.aux = aux
+        self.constrain = constrain
+
+        self.n_input = n_input
+        self.__setattr__('exclusive', ['head'])
+
+        # self.out = nn.Sequential(
+        #     nn.Conv2d(2048, 2048//4, 3, padding=1, bias=False),
+        #     nn.BatchNorm2d(2048//4),
+        #     nn.ReLU(inplace=True),
+        #     nn.Dropout(0.1),
+        #     nn.Conv2d(2048//4, nclass, 1)
+        # )
+
+    def forward(self, x):
+        size = x.size()[2:]
+        # if self.constrain:
+        #     x = rgb2gray(x)
+        #     x = self.constrain_conv(x)
+        feature_map, _ = self.extractor(x)
+        c3, c4 = feature_map[2], feature_map[3]
+
+        outputs = []
+
+        # x0 = self.out(c4)
+        # x0 = F.interpolate(x0, size, mode='bilinear', align_corners=True)
+        # return x0
+
+        x = self.head(c4)
+        x0 = F.interpolate(x[0], size, mode='bilinear', align_corners=True)
+        outputs.append(x0)
+
+        if self.aux:
+            # print('x[1]:{}'.format(x[1].shape))
+            x1 = F.interpolate(x[1], size, mode='bilinear', align_corners=True)
+            x2 = F.interpolate(x[2], size, mode='bilinear', align_corners=True)
+            outputs.append(x1)
+            outputs.append(x2)
+
+        return x0
+
+class DANet_BayerNoise(ResNet50):
+    def __init__(self, nclass, aux=False, n_input=3, constrain=False, **kwargs):
+        super(DANet_BayerNoise, self).__init__(nclass, n_input=n_input)
+
+        print('-------use res50--------')
+        self.extractor = self.base_forward
+
+        self.aux = aux
+        self.constrain = constrain
+
+        if self.constrain:
+            print("-------use constrain----")
+            self.noise_extractor = ResNet50(n_input=3, pretrained=True)
+            self.constrain_conv = BayarConv2d(in_channels=1, out_channels=3, padding=2)
+            self.head = _DAHead(2048+2048, nclass, aux, **kwargs)
+        else:
+            self.head = _DAHead(2048, self.num_class, aux, **kwargs)
+
+        self.n_input = n_input
+        self.__setattr__('exclusive', ['head'])
+
+    def forward(self, x):
+        size = x.size()[2:]
+        input_ = x.clone()
+        feature_map, _ = self.extractor(input_)
+        _, _, c3, c4 = feature_map
+
+        outputs = []
+
+        if self.constrain:
+            x = rgb2gray(x)
+            x = self.constrain_conv(x)
+            constrain_features, _ = self.noise_extractor.base_forward(x)
+            constrain_feature = constrain_features[-1]
+            c4 = torch.cat([c4, constrain_feature], dim=1)
+
+        x = self.head(c4)
+        x0 = F.interpolate(x[0], size, mode='bilinear', align_corners=True)
+        outputs.append(x0)
+
+        if self.aux:
+            # print('x[1]:{}'.format(x[1].shape))
+            x1 = F.interpolate(x[1], size, mode='bilinear', align_corners=True)
+            x2 = F.interpolate(x[2], size, mode='bilinear', align_corners=True)
+            outputs.append(x1)
+            outputs.append(x2)
+
+        return x0
+class DANet_SRMNoise(ResNet50):
+    def __init__(self, nclass, aux=False, n_input=3, constrain=False, **kwargs):
+        super(DANet_SRMNoise, self).__init__(nclass, n_input=n_input)
+
+        print('-------use res50--------')
+        self.extractor = self.base_forward
+
+        self.aux = aux
+        self.constrain = constrain
+
+        if self.constrain:
+            print("-------use constrain----")
+            self.noise_extractor = ResNet50(n_input=3, pretrained=True)
+            self.srm = SRMConv2D().cuda()
+            self.head = _DAHead(2048+2048, nclass, aux, **kwargs)
+        else:
+            self.head = _DAHead(2048, self.num_class, aux, **kwargs)
+
+        self.n_input = n_input
+        self.__setattr__('exclusive', ['head'])
+
+    def forward(self, x):
+        size = x.size()[2:]
+        input_ = x.clone()
+        feature_map, _ = self.extractor(input_)
+        _, _, c3, c4 = feature_map
+
+        outputs = []
+
+        if self.constrain:
+            # x = rgb2gray(x)
+            x = self.srm(input_)
+            constrain_features, _ = self.noise_extractor.base_forward(x)
+            constrain_feature = constrain_features[-1]
+            c4 = torch.cat([c4, constrain_feature], dim=1)
+
+        x = self.head(c4)
+        x0 = F.interpolate(x[0], size, mode='bilinear', align_corners=True)
+        outputs.append(x0)
+
+        if self.aux:
+            # print('x[1]:{}'.format(x[1].shape))
+            x1 = F.interpolate(x[1], size, mode='bilinear', align_corners=True)
+            x2 = F.interpolate(x[2], size, mode='bilinear', align_corners=True)
+            outputs.append(x1)
+            outputs.append(x2)
+
+        return x0
 def get_danet(backbone='resnet50', pretrained_base=True, nclass=1, constrain=False, n_input=3, **kwargs):
     model = DANet(nclass, backbone=backbone, pretrained_base=pretrained_base,
                   constrain=constrain, n_input=n_input, **kwargs)
     return model
 
+def get_danet_BayerNoise(backbone='resnet50', pretrained_base=True, nclass=1, constrain=True, n_input=3, **kwargs):
+    model = DANet_BayerNoise(nclass, backbone=backbone, pretrained_base=pretrained_base,
+                  constrain=constrain, n_input=n_input, **kwargs)
+    return model
 
+def get_danet_SRMNoise(backbone='resnet50', pretrained_base=True, nclass=1, constrain=True, n_input=3, **kwargs):
+    model = DANet_SRMNoise(nclass, backbone=backbone, pretrained_base=pretrained_base,
+                  constrain=constrain, n_input=n_input, **kwargs)
+    return model
 if __name__ == '__main__':
     img = torch.randn(2, 3, 512, 512)
     model = get_danet(constrain=False, n_input=3)

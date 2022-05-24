@@ -5,3 +5,8 @@ docs/build
 *~
 ps_battles_orisize/*
 *.png
+*.pyc
+apex/*
+apex/__pycache__/*
+apex/amp/*
+apex/__pycache__/__init__.cpython-36.pyc

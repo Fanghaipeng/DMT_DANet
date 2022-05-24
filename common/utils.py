@@ -254,7 +254,7 @@ def get_img_lab(pd, gt, step, step_num):
 
 def remove_small(img):
     #print('img',img.shape)
-    contours, _ = cv2.findContours(img.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+    _, contours, _ = cv2.findContours(img.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
     for i, cnt in enumerate(contours):
         if cnt.shape[0] / (img.shape[0] * img.shape[1]) < 6e-5 or cnt.shape[0] < 36:
             for ix in range(cnt.shape[0]):

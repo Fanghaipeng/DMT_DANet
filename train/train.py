@@ -20,7 +20,7 @@ from common.utils import read_annotations_3
 from common.tools import run_iter, run_validation
 
 from model.MantraNet import MantraNet
-from model.danet import get_danet
+from model.danet import get_danet, get_danet_BayerNoise, get_danet_SRMNoise
 from model.unet import UNet
 from model.fcn import FCN16s, FCN8s
 from common.glob import opt
@@ -51,7 +51,6 @@ if __name__ == "__main__":
     if opt.gpu_id != -1:
         os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
         os.environ["CUDA_VISIBLE_DEVICES"] = str(opt.gpu_id)
-        # os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2,3'
 
 
     # random seed setting
@@ -89,8 +88,16 @@ if __name__ == "__main__":
     elif "fcn8s" in config["model_name"]:
         model = FCN8s(nclass=1, pretrained_base=True)
     elif "danet" or "resfcn" in config["model_name"]:
-        model = get_danet(backbone='resnet50', pretrained_base=True, nclass=1,
+        if "BayarNoise" in config["model_name"]:
+            model = get_danet_BayerNoise(backbone='resnet50', pretrained_base=True, nclass=1,
                           n_input=int(config["train"]["n_input"]))
+        elif "SRMNoise" in config["model_name"]:
+            model = get_danet_SRMNoise(backbone='resnet50', pretrained_base=True, nclass=1,
+                          n_input=int(config["train"]["n_input"]))
+        else:
+            model = get_danet(backbone='resnet50', pretrained_base=True, nclass=1,
+                          n_input=int(config["train"]["n_input"]))
+        
     elif "unet" in config["model_name"]:
         model = UNet(in_channels=3, n_classes=1)
     else:
@@ -98,8 +105,6 @@ if __name__ == "__main__":
         print("Model %s not found " % config["model_name"])
         exit()
 
-    model = torch.nn.DataParallel(model, device_ids=device_ids)
-    
     # loss function
     loss_fns = [DiceLoss(smooth=1).cuda(),
                 WeightBceLoss(weight=3).cuda()]
@@ -175,7 +180,7 @@ if __name__ == "__main__":
     print("Let's use", torch.cuda.device_count(), "GPUs!")
     model.cuda()
     if str2bool(config["train"]["fp16"]):
-        assert opt.gpu_num == torch.cuda.device_count()
+        # assert opt.gpu_num == torch.cuda.device_count()
         amp.register_float_function(torch, 'sigmoid')
         model, optimizer = amp.initialize(model, optimizer, opt_level='O1', loss_scale='dynamic')
     if opt.gpu_num > 1 and opt.gpu_id == -1:
